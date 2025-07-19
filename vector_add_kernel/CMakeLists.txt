@@ -1,4 +1,4 @@
-project(matrix_add_kernel CUDA CXX)
+project(vector_add_kernel CUDA CXX)
 
 include_directories(./)
 
