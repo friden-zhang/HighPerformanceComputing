@@ -3,6 +3,14 @@
 
 template <typename T> static T CeilDiv(T x, T y) { return (x + y - 1) / y; }
 
+static __device__ __forceinline__ float warp_reduce_sum(float x) {
+#pragma unroll
+  for (int mask = 16; mask > 0; mask >>= 1) {
+    x += __shfl_xor_sync(0xffffffff, x, mask, 32);
+  }
+  return x;
+}
+
 /// ----------------------------------------------------------------------------
 /// native sum kernel
 /// ----------------------------------------------------------------------------
@@ -161,6 +169,52 @@ cudaError_t launch_thread_coarsening_kernel(float *input, float *output, int n,
     cudaDeviceSynchronize();
   } else {
     thread_coarsening_kernel<BlockDim, ThreadCoarseningSize>
+        <<<grid, block, 0, stream>>>(input, output, n);
+  }
+  return cudaGetLastError();
+}
+
+/// ----------------------------------------------------------------------------
+/// Warp Reduction
+/// ----------------------------------------------------------------------------
+template <int BlockDim>
+__global__ void warp_reduction_kernel(float *input, float *output, int n) {
+  constexpr int kWarpThreadNum = 32;
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  float data = tid < n ? input[tid] : 0.0f;
+  data = warp_reduce_sum(data);
+  if (BlockDim > kWarpThreadNum) {
+    static_assert(BlockDim / kWarpThreadNum <= 32,
+                  "BlockDim / kWarpThreadNum <= 32");
+    __shared__ float shared_data[32];
+    int wrap_id = threadIdx.x / kWarpThreadNum;
+    int lane_id = threadIdx.x % kWarpThreadNum;
+    if (lane_id == 0) {
+      shared_data[wrap_id] = data;
+    }
+    __syncthreads();
+    if (wrap_id == 0) {
+      data = threadIdx.x < BlockDim / kWarpThreadNum ? shared_data[threadIdx.x]
+                                                     : 0.0f;
+      data = warp_reduce_sum(data);
+      if (lane_id == 0) {
+        atomicAdd(output, data);
+      }
+    }
+  }
+}
+
+// launch warp reduction kernel
+template <int BlockDim>
+cudaError_t launch_warp_reduction_kernel(float *input, float *output, int n,
+                                         cudaStream_t stream) {
+  dim3 block(BlockDim);
+  dim3 grid(CeilDiv(n, BlockDim));
+  if (stream == nullptr) {
+    warp_reduction_kernel<BlockDim><<<grid, block>>>(input, output, n);
+    cudaDeviceSynchronize();
+  } else {
+    warp_reduction_kernel<BlockDim>
         <<<grid, block, 0, stream>>>(input, output, n);
   }
   return cudaGetLastError();

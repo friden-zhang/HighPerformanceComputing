@@ -69,3 +69,13 @@ TEST_F(ReductionTest, ThreadCoarseningKernel) {
   thrust::host_vector<float> h_result(d_result);
   EXPECT_NEAR(h_result[0], cpu_result[0], 1e-6);
 }
+
+TEST_F(ReductionTest, WarpReductionKernel) {
+  thrust::device_vector<float> d_result(1);
+  auto err = launch_warp_reduction_kernel<128>(
+      thrust::raw_pointer_cast(d_data.data()),
+      thrust::raw_pointer_cast(d_result.data()), 2048, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_result(d_result);
+  EXPECT_NEAR(h_result[0], cpu_result[0], 1e-6);
+}
