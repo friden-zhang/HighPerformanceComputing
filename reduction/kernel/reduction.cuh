@@ -1,5 +1,8 @@
 #include <cub/cub.cuh>
+#include <cuda/__atomic/atomic.h>
 #include <cuda_runtime.h>
+
+#include <cuda/atomic>
 
 template <typename T> static T CeilDiv(T x, T y) { return (x + y - 1) / y; }
 
@@ -28,7 +31,9 @@ __global__ void native_sum_kernel(float *input, float *output, int n) {
     __syncthreads();
   }
   if (threadIdx.x == 0) {
-    atomicAdd(output, input[2 * blockIdx.x * blockDim.x]);
+    cuda::atomic_ref<float, cuda::thread_scope_device> output_ref(*output);
+    output_ref.fetch_add(input[2 * blockIdx.x * blockDim.x],
+                         cuda::std::memory_order_relaxed);
   }
 }
 
@@ -64,7 +69,9 @@ __global__ void control_divergence_kernel(float *input, float *output, int n) {
     __syncthreads();
   }
   if (threadIdx.x == 0) {
-    atomicAdd(output, input[2 * blockIdx.x * blockDim.x]);
+    cuda::atomic_ref<float, cuda::thread_scope_device> output_ref(*output);
+    output_ref.fetch_add(input[2 * blockIdx.x * blockDim.x],
+                         cuda::std::memory_order_relaxed);
   }
 }
 
@@ -106,7 +113,8 @@ __global__ void shared_memory_reduction_kernel(float *input, float *output,
     __syncthreads();
   }
   if (threadIdx.x == 0) {
-    atomicAdd(output, shared_data[0]);
+    cuda::atomic_ref<float, cuda::thread_scope_device> output_ref(*output);
+    output_ref.fetch_add(shared_data[0], cuda::std::memory_order_relaxed);
   }
 }
 
@@ -153,7 +161,8 @@ __global__ void thread_coarsening_kernel(float *input, float *output, int n) {
     __syncthreads();
   }
   if (threadIdx.x == 0) {
-    atomicAdd(output, shared_data[0]);
+    cuda::atomic_ref<float, cuda::thread_scope_device> output_ref(*output);
+    output_ref.fetch_add(shared_data[0], cuda::std::memory_order_relaxed);
   }
 }
 
@@ -198,7 +207,8 @@ __global__ void warp_reduction_kernel(float *input, float *output, int n) {
                                                      : 0.0f;
       data = warp_reduce_sum(data);
       if (lane_id == 0) {
-        atomicAdd(output, data);
+        cuda::atomic_ref<float, cuda::thread_scope_device> output_ref(*output);
+        output_ref.fetch_add(data, cuda::std::memory_order_relaxed);
       }
     }
   }
