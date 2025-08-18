@@ -2,6 +2,9 @@
 
 #include "kernel/native.cuh"
 #include "kernel/shared_mem_blocking.cuh"
+#include "kernel/shared_mem_blocking_tile.cuh"
+#include <kernel/shared_mem_blocking_tile_vec.cuh>
+#include <kernel/shared_mem_blocking_tile_strict_vec.cuh>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
@@ -69,6 +72,48 @@ TEST_F(SGEMMKernelTest, NativeKernel) {
 TEST_F(SGEMMKernelTest, SharedMemBlockingKernel) {
   thrust::device_vector<float> d_c(M * K);
   cudaError_t err = launch_sgemm_shared_mem_blocking<32>(
+      thrust::raw_pointer_cast(d_a.data()),
+      thrust::raw_pointer_cast(d_b.data()),
+      thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernel) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err = launch_sgemm_shared_mem_blocking_tile<32, 4>(
+      thrust::raw_pointer_cast(d_a.data()),
+      thrust::raw_pointer_cast(d_b.data()),
+      thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernelVec) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err = launch_sgemm_shared_mem_blocking_tile_vec<32, 4>(
+      thrust::raw_pointer_cast(d_a.data()),
+      thrust::raw_pointer_cast(d_b.data()),
+      thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernelStrictVec) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err = launch_sgemm_shared_mem_blocking_tile_strict_vec<32, 4>(
       thrust::raw_pointer_cast(d_a.data()),
       thrust::raw_pointer_cast(d_b.data()),
       thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N, K, nullptr);
