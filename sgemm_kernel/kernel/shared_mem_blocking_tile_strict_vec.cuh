@@ -80,16 +80,28 @@ __global__ void sgemm_shared_mem_blocking_tile_strict_vec(float *A, float *B,
     }
 
     __syncthreads();
+  }
 
+  float *c_ptr = &mdspan_C(row, col);
+  if (beta == 0.0f) {
 #pragma unroll
     for (int i = 0; i < TileSize; i += 4) {
-      uint col_i = col + i;
-      float4& out = *reinterpret_cast<float4*>(&mdspan_C(row, col_i));
-      // mdspan_C(row, col_i) = alpha * sum[i] + beta * ;
+      float4 out;
+      out.x = alpha * sum[i];
+      out.y = alpha * sum[i + 1];
+      out.z = alpha * sum[i + 2];
+      out.w = alpha * sum[i + 3];
+      *reinterpret_cast<float4 *>(c_ptr + i) = out;
+    }
+  } else {
+#pragma unroll
+    for (int i = 0; i < TileSize; i += 4) {
+      float4 out = *reinterpret_cast<float4 *>(c_ptr + i);
       out.x = alpha * sum[i] + beta * out.x;
       out.y = alpha * sum[i + 1] + beta * out.y;
       out.z = alpha * sum[i + 2] + beta * out.z;
       out.w = alpha * sum[i + 3] + beta * out.w;
+      *reinterpret_cast<float4 *>(c_ptr + i) = out;
     }
   }
 }

@@ -110,8 +110,18 @@ __global__ void sgemm_shared_mem_blocking_tile_vec(float *A, float *B, float *C,
     }
 
     __syncthreads();
+  }
 
-    if (row < M) {
+  if (row < M) {
+    if (beta == 0.0f) {
+#pragma unroll
+      for (int i = 0; i < TileSize; ++i) {
+        uint col_i = col + i;
+        if (col_i < K) {
+          mdspan_C(row, col_i) = alpha * sum[i];
+        }
+      }
+    } else {
 #pragma unroll
       for (int i = 0; i < TileSize; ++i) {
         uint col_i = col + i;
