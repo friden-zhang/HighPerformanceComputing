@@ -22,6 +22,15 @@ add_executable(sgemm_kernel_benchmark
 )
 
 target_link_libraries(sgemm_kernel_benchmark
+    PRIVATE
     CUDA::cudart
     benchmark::benchmark
 )
+
+if(TARGET cutlass_headers)
+  target_link_libraries(sgemm_kernel_benchmark PRIVATE cutlass_headers)
+  target_compile_definitions(sgemm_kernel_benchmark PRIVATE HPC_USE_CUTLASS=1)
+  target_compile_options(sgemm_kernel_benchmark PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+  )
+endif()
