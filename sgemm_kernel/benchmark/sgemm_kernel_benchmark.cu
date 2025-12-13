@@ -17,9 +17,11 @@
 
 #ifdef HPC_USE_CUTLASS
 #include <cutlass/cutlass.h>
+#include <cutlass/epilogue/thread/linear_combination.h>
 #include <cutlass/gemm/device/gemm.h>
 #include <cutlass/gemm/gemm.h>
 #include <cutlass/layout/matrix.h>
+#include <cutlass/tfloat32.h>
 #endif
 
 int M = 1024;
@@ -346,6 +348,267 @@ static void BM_CUTLASS_SGEMM(benchmark::State &state) {
     benchmark::DoNotOptimize(status);
   }
 }
+
+static void BM_CUTLASS_TF32_TENSOROP_SGEMM(benchmark::State &state) {
+  cudaSetDevice(0);
+
+  thrust::device_vector<cutlass::tfloat32_t> d_a(M * N);
+  thrust::device_vector<cutlass::tfloat32_t> d_b(N * K);
+  thrust::device_vector<float> d_c(M * K);
+
+  using ElementAccumulator = float;
+  using ElementComputeEpilogue = ElementAccumulator;
+  using ElementInputA = cutlass::tfloat32_t;
+  using ElementInputB = cutlass::tfloat32_t;
+  using ElementOutput = float;
+
+  using LayoutInputA = cutlass::layout::RowMajor;
+  using LayoutInputB = cutlass::layout::ColumnMajor;
+  using LayoutOutput = cutlass::layout::RowMajor;
+
+  using MMAOp = cutlass::arch::OpClassTensorOp;
+  using SmArch = cutlass::arch::Sm80;
+
+  using ShapeMMAThreadBlock = cutlass::gemm::GemmShape<128, 128, 16>;
+  using ShapeMMAWarp = cutlass::gemm::GemmShape<64, 64, 16>;
+  using ShapeMMAOp = cutlass::gemm::GemmShape<16, 8, 8>;
+
+  using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
+      ElementOutput, 128 / cutlass::sizeof_bits<ElementOutput>::value,
+      ElementAccumulator, ElementComputeEpilogue>;
+
+  constexpr int NumStages = 4;
+
+  using Gemm = cutlass::gemm::device::Gemm<
+      ElementInputA, LayoutInputA, ElementInputB, LayoutInputB, ElementOutput,
+      LayoutOutput, ElementAccumulator, MMAOp, SmArch, ShapeMMAThreadBlock,
+      ShapeMMAWarp, ShapeMMAOp, EpilogueOp,
+      cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>, NumStages>;
+
+  Gemm gemm_op;
+
+  // CUTLASS GEMM uses (m, n, k): A[m, k] * B[k, n] = C[m, n]
+  cutlass::gemm::GemmCoord problem_size(M, K, N);
+
+  const int lda = N;
+  const int ldb = N;  // ColumnMajor (k, n) => leading dim is k
+  const int ldc = K;
+
+  typename Gemm::Arguments arguments{
+      problem_size,
+      {thrust::raw_pointer_cast(d_a.data()), lda},
+      {thrust::raw_pointer_cast(d_b.data()), ldb},
+      {thrust::raw_pointer_cast(d_c.data()), ldc},
+      {thrust::raw_pointer_cast(d_c.data()), ldc},
+      {1.0f, 0.0f}};
+
+  auto can_status = gemm_op.can_implement(arguments);
+  if (can_status != cutlass::Status::kSuccess) {
+    state.SkipWithError(cutlass::cutlassGetStatusString(can_status));
+    return;
+  }
+
+  size_t workspace_size = gemm_op.get_workspace_size(arguments);
+  thrust::device_vector<uint8_t> workspace(workspace_size);
+  uint8_t *workspace_ptr =
+      workspace_size > 0 ? thrust::raw_pointer_cast(workspace.data()) : nullptr;
+
+  auto init_status = gemm_op.initialize(arguments, workspace_ptr);
+  if (init_status != cutlass::Status::kSuccess) {
+    state.SkipWithError(cutlass::cutlassGetStatusString(init_status));
+    return;
+  }
+
+  for (auto _ : state) {
+    auto status = gemm_op();
+    if (status != cutlass::Status::kSuccess) {
+      state.SkipWithError(cutlass::cutlassGetStatusString(status));
+      return;
+    }
+    auto err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(err));
+      return;
+    }
+    benchmark::DoNotOptimize(status);
+  }
+}
+
+static void BM_CUTLASS_FP16_TENSOROP_GEMM(benchmark::State &state) {
+  cudaSetDevice(0);
+
+  thrust::device_vector<cutlass::half_t> d_a(M * N);
+  thrust::device_vector<cutlass::half_t> d_b(N * K);
+  thrust::device_vector<float> d_c(M * K);
+
+  using ElementAccumulator = float;
+  using ElementComputeEpilogue = ElementAccumulator;
+  using ElementInputA = cutlass::half_t;
+  using ElementInputB = cutlass::half_t;
+  using ElementOutput = float;
+
+  using LayoutInputA = cutlass::layout::RowMajor;
+  using LayoutInputB = cutlass::layout::ColumnMajor;
+  using LayoutOutput = cutlass::layout::RowMajor;
+
+  using MMAOp = cutlass::arch::OpClassTensorOp;
+  using SmArch = cutlass::arch::Sm80;
+
+  using ShapeMMAThreadBlock = cutlass::gemm::GemmShape<128, 128, 32>;
+  using ShapeMMAWarp = cutlass::gemm::GemmShape<64, 64, 32>;
+  using ShapeMMAOp = cutlass::gemm::GemmShape<16, 8, 16>;
+
+  using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
+      ElementOutput, 128 / cutlass::sizeof_bits<ElementOutput>::value,
+      ElementAccumulator, ElementComputeEpilogue>;
+
+  constexpr int NumStages = 4;
+  constexpr int AlignmentA = 128 / cutlass::sizeof_bits<ElementInputA>::value;
+  constexpr int AlignmentB = 128 / cutlass::sizeof_bits<ElementInputB>::value;
+
+  using Gemm = cutlass::gemm::device::Gemm<
+      ElementInputA, LayoutInputA, ElementInputB, LayoutInputB, ElementOutput,
+      LayoutOutput, ElementAccumulator, MMAOp, SmArch, ShapeMMAThreadBlock,
+      ShapeMMAWarp, ShapeMMAOp, EpilogueOp,
+      cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>, NumStages,
+      AlignmentA, AlignmentB>;
+
+  Gemm gemm_op;
+
+  // CUTLASS GEMM uses (m, n, k): A[m, k] * B[k, n] = C[m, n]
+  cutlass::gemm::GemmCoord problem_size(M, K, N);
+
+  const int lda = N;
+  const int ldb = N;  // ColumnMajor (k, n) => leading dim is k
+  const int ldc = K;
+
+  typename Gemm::Arguments arguments{
+      problem_size,
+      {thrust::raw_pointer_cast(d_a.data()), lda},
+      {thrust::raw_pointer_cast(d_b.data()), ldb},
+      {thrust::raw_pointer_cast(d_c.data()), ldc},
+      {thrust::raw_pointer_cast(d_c.data()), ldc},
+      {1.0f, 0.0f}};
+
+  auto can_status = gemm_op.can_implement(arguments);
+  if (can_status != cutlass::Status::kSuccess) {
+    state.SkipWithError(cutlass::cutlassGetStatusString(can_status));
+    return;
+  }
+
+  size_t workspace_size = gemm_op.get_workspace_size(arguments);
+  thrust::device_vector<uint8_t> workspace(workspace_size);
+  uint8_t *workspace_ptr =
+      workspace_size > 0 ? thrust::raw_pointer_cast(workspace.data()) : nullptr;
+
+  auto init_status = gemm_op.initialize(arguments, workspace_ptr);
+  if (init_status != cutlass::Status::kSuccess) {
+    state.SkipWithError(cutlass::cutlassGetStatusString(init_status));
+    return;
+  }
+
+  for (auto _ : state) {
+    auto status = gemm_op();
+    if (status != cutlass::Status::kSuccess) {
+      state.SkipWithError(cutlass::cutlassGetStatusString(status));
+      return;
+    }
+    auto err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(err));
+      return;
+    }
+    benchmark::DoNotOptimize(status);
+  }
+}
+
+static void BM_CUTLASS_BF16_TENSOROP_GEMM(benchmark::State &state) {
+  cudaSetDevice(0);
+
+  thrust::device_vector<cutlass::bfloat16_t> d_a(M * N);
+  thrust::device_vector<cutlass::bfloat16_t> d_b(N * K);
+  thrust::device_vector<float> d_c(M * K);
+
+  using ElementAccumulator = float;
+  using ElementComputeEpilogue = ElementAccumulator;
+  using ElementInputA = cutlass::bfloat16_t;
+  using ElementInputB = cutlass::bfloat16_t;
+  using ElementOutput = float;
+
+  using LayoutInputA = cutlass::layout::RowMajor;
+  using LayoutInputB = cutlass::layout::ColumnMajor;
+  using LayoutOutput = cutlass::layout::RowMajor;
+
+  using MMAOp = cutlass::arch::OpClassTensorOp;
+  using SmArch = cutlass::arch::Sm80;
+
+  using ShapeMMAThreadBlock = cutlass::gemm::GemmShape<128, 128, 32>;
+  using ShapeMMAWarp = cutlass::gemm::GemmShape<64, 64, 32>;
+  using ShapeMMAOp = cutlass::gemm::GemmShape<16, 8, 16>;
+
+  using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
+      ElementOutput, 128 / cutlass::sizeof_bits<ElementOutput>::value,
+      ElementAccumulator, ElementComputeEpilogue>;
+
+  constexpr int NumStages = 4;
+  constexpr int AlignmentA = 128 / cutlass::sizeof_bits<ElementInputA>::value;
+  constexpr int AlignmentB = 128 / cutlass::sizeof_bits<ElementInputB>::value;
+
+  using Gemm = cutlass::gemm::device::Gemm<
+      ElementInputA, LayoutInputA, ElementInputB, LayoutInputB, ElementOutput,
+      LayoutOutput, ElementAccumulator, MMAOp, SmArch, ShapeMMAThreadBlock,
+      ShapeMMAWarp, ShapeMMAOp, EpilogueOp,
+      cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>, NumStages,
+      AlignmentA, AlignmentB>;
+
+  Gemm gemm_op;
+
+  // CUTLASS GEMM uses (m, n, k): A[m, k] * B[k, n] = C[m, n]
+  cutlass::gemm::GemmCoord problem_size(M, K, N);
+
+  const int lda = N;
+  const int ldb = N;  // ColumnMajor (k, n) => leading dim is k
+  const int ldc = K;
+
+  typename Gemm::Arguments arguments{
+      problem_size,
+      {thrust::raw_pointer_cast(d_a.data()), lda},
+      {thrust::raw_pointer_cast(d_b.data()), ldb},
+      {thrust::raw_pointer_cast(d_c.data()), ldc},
+      {thrust::raw_pointer_cast(d_c.data()), ldc},
+      {1.0f, 0.0f}};
+
+  auto can_status = gemm_op.can_implement(arguments);
+  if (can_status != cutlass::Status::kSuccess) {
+    state.SkipWithError(cutlass::cutlassGetStatusString(can_status));
+    return;
+  }
+
+  size_t workspace_size = gemm_op.get_workspace_size(arguments);
+  thrust::device_vector<uint8_t> workspace(workspace_size);
+  uint8_t *workspace_ptr =
+      workspace_size > 0 ? thrust::raw_pointer_cast(workspace.data()) : nullptr;
+
+  auto init_status = gemm_op.initialize(arguments, workspace_ptr);
+  if (init_status != cutlass::Status::kSuccess) {
+    state.SkipWithError(cutlass::cutlassGetStatusString(init_status));
+    return;
+  }
+
+  for (auto _ : state) {
+    auto status = gemm_op();
+    if (status != cutlass::Status::kSuccess) {
+      state.SkipWithError(cutlass::cutlassGetStatusString(status));
+      return;
+    }
+    auto err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(err));
+      return;
+    }
+    benchmark::DoNotOptimize(status);
+  }
+}
 #endif
 
 BENCHMARK(BM_SGEMMKernel<16, 8>);
@@ -404,6 +667,9 @@ BENCHMARK(BM_SGEMMSharedMemBlockingTileMdspanRegBlockCpAsyncKSlice<32, 8, 4, 16>
 
 #ifdef HPC_USE_CUTLASS
 BENCHMARK(BM_CUTLASS_SGEMM);
+BENCHMARK(BM_CUTLASS_TF32_TENSOROP_SGEMM);
+BENCHMARK(BM_CUTLASS_FP16_TENSOROP_GEMM);
+BENCHMARK(BM_CUTLASS_BF16_TENSOROP_GEMM);
 #endif
 
 BENCHMARK_MAIN();

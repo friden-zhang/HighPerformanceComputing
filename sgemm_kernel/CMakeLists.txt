@@ -8,6 +8,7 @@ add_executable(sgemm_kernel_test
 )
 
 target_link_libraries(sgemm_kernel_test
+    PRIVATE
     CUDA::cudart
     GTest::gtest
     GTest::gtest_main
@@ -31,6 +32,14 @@ if(TARGET cutlass_headers)
   target_link_libraries(sgemm_kernel_benchmark PRIVATE cutlass_headers)
   target_compile_definitions(sgemm_kernel_benchmark PRIVATE HPC_USE_CUTLASS=1)
   target_compile_options(sgemm_kernel_benchmark PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+  )
+endif()
+
+if(TARGET cutlass_headers)
+  target_link_libraries(sgemm_kernel_test PRIVATE cutlass_headers)
+  target_compile_definitions(sgemm_kernel_test PRIVATE HPC_USE_CUTLASS=1)
+  target_compile_options(sgemm_kernel_test PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
   )
 endif()
