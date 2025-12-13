@@ -3,6 +3,8 @@
 #include "kernel/native.cuh"
 #include "kernel/shared_mem_blocking.cuh"
 #include "kernel/shared_mem_blocking_tile.cuh"
+#include <kernel/shared_mem_blocking_tile_mdspan_vec.cuh>
+#include <kernel/shared_mem_blocking_tile_raw_vec.cuh>
 #include <kernel/shared_mem_blocking_tile_vec.cuh>
 #include <kernel/shared_mem_blocking_tile_strict_vec.cuh>
 #include <thrust/device_vector.h>
@@ -122,5 +124,85 @@ TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernelStrictVec) {
   thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
   for (int i = 0; i < M * K; i++) {
     ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernelRawVec) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err = launch_sgemm_shared_mem_blocking_tile_raw_vec<32, 4>(
+      thrust::raw_pointer_cast(d_a.data()),
+      thrust::raw_pointer_cast(d_b.data()),
+      thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernelRawVecBeta) {
+  const float alpha = 0.7f;
+  const float beta = 0.3f;
+
+  thrust::host_vector<float> init_c(M * K);
+  for (int i = 0; i < M * K; ++i) {
+    init_c[i] = rand() % 5 / 5.0f;
+  }
+
+  thrust::host_vector<float> cpu_ref = init_c;
+  cpu_sgemm(A.data(), B.data(), cpu_ref.data(), alpha, beta, M, N, K);
+
+  thrust::device_vector<float> d_c = init_c;
+  cudaError_t err = launch_sgemm_shared_mem_blocking_tile_raw_vec<32, 4>(
+      thrust::raw_pointer_cast(d_a.data()),
+      thrust::raw_pointer_cast(d_b.data()),
+      thrust::raw_pointer_cast(d_c.data()), alpha, beta, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_ref[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernelMdspanVec) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err = launch_sgemm_shared_mem_blocking_tile_mdspan_vec<32, 4>(
+      thrust::raw_pointer_cast(d_a.data()),
+      thrust::raw_pointer_cast(d_b.data()),
+      thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernelMdspanVecBeta) {
+  const float alpha = 0.7f;
+  const float beta = 0.3f;
+
+  thrust::host_vector<float> init_c(M * K);
+  for (int i = 0; i < M * K; ++i) {
+    init_c[i] = rand() % 5 / 5.0f;
+  }
+
+  thrust::host_vector<float> cpu_ref = init_c;
+  cpu_sgemm(A.data(), B.data(), cpu_ref.data(), alpha, beta, M, N, K);
+
+  thrust::device_vector<float> d_c = init_c;
+  cudaError_t err = launch_sgemm_shared_mem_blocking_tile_mdspan_vec<32, 4>(
+      thrust::raw_pointer_cast(d_a.data()),
+      thrust::raw_pointer_cast(d_b.data()),
+      thrust::raw_pointer_cast(d_c.data()), alpha, beta, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_ref[i], 1e-2);
   }
 }

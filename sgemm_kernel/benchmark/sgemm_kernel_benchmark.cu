@@ -4,6 +4,8 @@
 #include "kernel/native.cuh"
 #include "kernel/shared_mem_blocking.cuh"
 #include "kernel/shared_mem_blocking_tile.cuh"
+#include "kernel/shared_mem_blocking_tile_mdspan_vec.cuh"
+#include "kernel/shared_mem_blocking_tile_raw_vec.cuh"
 #include "kernel/shared_mem_blocking_tile_vec.cuh"
 #include "kernel/shared_mem_blocking_tile_strict_vec.cuh"
 
@@ -115,6 +117,45 @@ static void BM_SGEMMSharedMemBlockingTileStrictVec(benchmark::State &state) {
   }
 }
 
+template <int BLOCK_SIZE, int TILE_SIZE>
+static void BM_SGEMMSharedMemBlockingTileRawVec(benchmark::State &state) {
+  cudaSetDevice(0);
+  thrust::device_vector<float> d_a(M * N);
+  thrust::device_vector<float> d_b(N * K);
+  thrust::device_vector<float> d_c(M * K);
+  for (auto _ : state) {
+    auto ret = launch_sgemm_shared_mem_blocking_tile_raw_vec<BLOCK_SIZE, TILE_SIZE>(
+        thrust::raw_pointer_cast(d_a.data()),
+        thrust::raw_pointer_cast(d_b.data()),
+        thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N, K, nullptr);
+    if (ret != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(ret));
+      return;
+    }
+    benchmark::DoNotOptimize(ret);
+  }
+}
+
+template <int BLOCK_SIZE, int TILE_SIZE>
+static void BM_SGEMMSharedMemBlockingTileMdspanVec(benchmark::State &state) {
+  cudaSetDevice(0);
+  thrust::device_vector<float> d_a(M * N);
+  thrust::device_vector<float> d_b(N * K);
+  thrust::device_vector<float> d_c(M * K);
+  for (auto _ : state) {
+    auto ret =
+        launch_sgemm_shared_mem_blocking_tile_mdspan_vec<BLOCK_SIZE, TILE_SIZE>(
+            thrust::raw_pointer_cast(d_a.data()),
+            thrust::raw_pointer_cast(d_b.data()),
+            thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N, K, nullptr);
+    if (ret != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(ret));
+      return;
+    }
+    benchmark::DoNotOptimize(ret);
+  }
+}
+
 #ifdef HPC_USE_CUTLASS
 static void BM_CUTLASS_SGEMM(benchmark::State &state) {
   cudaSetDevice(0);
@@ -202,6 +243,12 @@ BENCHMARK(BM_SGEMMSharedMemBlockingTileStrictVec<16, 4>);
 BENCHMARK(BM_SGEMMSharedMemBlockingTileStrictVec<16, 8>);
 BENCHMARK(BM_SGEMMSharedMemBlockingTileStrictVec<32, 4>);
 BENCHMARK(BM_SGEMMSharedMemBlockingTileStrictVec<32, 8>);
+
+BENCHMARK(BM_SGEMMSharedMemBlockingTileRawVec<32, 4>);
+BENCHMARK(BM_SGEMMSharedMemBlockingTileRawVec<32, 8>);
+
+BENCHMARK(BM_SGEMMSharedMemBlockingTileMdspanVec<32, 4>);
+BENCHMARK(BM_SGEMMSharedMemBlockingTileMdspanVec<32, 8>);
 
 #ifdef HPC_USE_CUTLASS
 BENCHMARK(BM_CUTLASS_SGEMM);
