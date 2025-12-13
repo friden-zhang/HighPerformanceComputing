@@ -5,6 +5,8 @@
 #include "kernel/shared_mem_blocking_tile.cuh"
 #include <kernel/shared_mem_blocking_tile_mdspan_vec.cuh>
 #include <kernel/shared_mem_blocking_tile_mdspan_reg_block.cuh>
+#include <kernel/shared_mem_blocking_tile_mdspan_reg_block_cp_async.cuh>
+#include <kernel/shared_mem_blocking_tile_mdspan_reg_block_cp_async_k_slice.cuh>
 #include <kernel/shared_mem_blocking_tile_raw_vec.cuh>
 #include <kernel/shared_mem_blocking_tile_raw_scalar.cuh>
 #include <kernel/shared_mem_blocking_tile_raw_vec_no_restrict.cuh>
@@ -410,6 +412,276 @@ TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernelMdspanRegBlock8x4Beta) {
           thrust::raw_pointer_cast(d_a.data()),
           thrust::raw_pointer_cast(d_b.data()),
           thrust::raw_pointer_cast(d_c.data()), alpha, beta, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_ref[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernelMdspanRegBlockCpAsync4x4) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async<32, 4, 4>(
+          thrust::raw_pointer_cast(d_a.data()),
+          thrust::raw_pointer_cast(d_b.data()),
+          thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest,
+       SharedMemBlockingTileKernelMdspanRegBlockCpAsync4x4Beta) {
+  const float alpha = 0.7f;
+  const float beta = 0.3f;
+
+  thrust::host_vector<float> init_c(M * K);
+  for (int i = 0; i < M * K; ++i) {
+    init_c[i] = rand() % 5 / 5.0f;
+  }
+
+  thrust::host_vector<float> cpu_ref = init_c;
+  cpu_sgemm(A.data(), B.data(), cpu_ref.data(), alpha, beta, M, N, K);
+
+  thrust::device_vector<float> d_c = init_c;
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async<32, 4, 4>(
+          thrust::raw_pointer_cast(d_a.data()),
+          thrust::raw_pointer_cast(d_b.data()),
+          thrust::raw_pointer_cast(d_c.data()), alpha, beta, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_ref[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest, SharedMemBlockingTileKernelMdspanRegBlockCpAsync8x4) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async<32, 8, 4>(
+          thrust::raw_pointer_cast(d_a.data()),
+          thrust::raw_pointer_cast(d_b.data()),
+          thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest,
+       SharedMemBlockingTileKernelMdspanRegBlockCpAsync8x4Beta) {
+  const float alpha = 0.7f;
+  const float beta = 0.3f;
+
+  thrust::host_vector<float> init_c(M * K);
+  for (int i = 0; i < M * K; ++i) {
+    init_c[i] = rand() % 5 / 5.0f;
+  }
+
+  thrust::host_vector<float> cpu_ref = init_c;
+  cpu_sgemm(A.data(), B.data(), cpu_ref.data(), alpha, beta, M, N, K);
+
+  thrust::device_vector<float> d_c = init_c;
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async<32, 8, 4>(
+          thrust::raw_pointer_cast(d_a.data()),
+          thrust::raw_pointer_cast(d_b.data()),
+          thrust::raw_pointer_cast(d_c.data()), alpha, beta, M, N, K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_ref[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest,
+       SharedMemBlockingTileKernelMdspanRegBlockCpAsyncKSlice4x4K8) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async_k_slice<
+          32, 4, 4, 8>(thrust::raw_pointer_cast(d_a.data()),
+                       thrust::raw_pointer_cast(d_b.data()),
+                       thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N,
+                       K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest,
+       SharedMemBlockingTileKernelMdspanRegBlockCpAsyncKSlice4x4K8Beta) {
+  const float alpha = 0.7f;
+  const float beta = 0.3f;
+
+  thrust::host_vector<float> init_c(M * K);
+  for (int i = 0; i < M * K; ++i) {
+    init_c[i] = rand() % 5 / 5.0f;
+  }
+
+  thrust::host_vector<float> cpu_ref = init_c;
+  cpu_sgemm(A.data(), B.data(), cpu_ref.data(), alpha, beta, M, N, K);
+
+  thrust::device_vector<float> d_c = init_c;
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async_k_slice<
+          32, 4, 4, 8>(thrust::raw_pointer_cast(d_a.data()),
+                       thrust::raw_pointer_cast(d_b.data()),
+                       thrust::raw_pointer_cast(d_c.data()), alpha, beta, M, N,
+                       K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_ref[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest,
+       SharedMemBlockingTileKernelMdspanRegBlockCpAsyncKSlice8x4K8) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async_k_slice<
+          32, 8, 4, 8>(thrust::raw_pointer_cast(d_a.data()),
+                       thrust::raw_pointer_cast(d_b.data()),
+                       thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N,
+                       K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest,
+       SharedMemBlockingTileKernelMdspanRegBlockCpAsyncKSlice8x4K8Beta) {
+  const float alpha = 0.7f;
+  const float beta = 0.3f;
+
+  thrust::host_vector<float> init_c(M * K);
+  for (int i = 0; i < M * K; ++i) {
+    init_c[i] = rand() % 5 / 5.0f;
+  }
+
+  thrust::host_vector<float> cpu_ref = init_c;
+  cpu_sgemm(A.data(), B.data(), cpu_ref.data(), alpha, beta, M, N, K);
+
+  thrust::device_vector<float> d_c = init_c;
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async_k_slice<
+          32, 8, 4, 8>(thrust::raw_pointer_cast(d_a.data()),
+                       thrust::raw_pointer_cast(d_b.data()),
+                       thrust::raw_pointer_cast(d_c.data()), alpha, beta, M, N,
+                       K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_ref[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest,
+       SharedMemBlockingTileKernelMdspanRegBlockCpAsyncKSlice4x4K16) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async_k_slice<
+          32, 4, 4, 16>(thrust::raw_pointer_cast(d_a.data()),
+                        thrust::raw_pointer_cast(d_b.data()),
+                        thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N,
+                        K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest,
+       SharedMemBlockingTileKernelMdspanRegBlockCpAsyncKSlice4x4K16Beta) {
+  const float alpha = 0.7f;
+  const float beta = 0.3f;
+
+  thrust::host_vector<float> init_c(M * K);
+  for (int i = 0; i < M * K; ++i) {
+    init_c[i] = rand() % 5 / 5.0f;
+  }
+
+  thrust::host_vector<float> cpu_ref = init_c;
+  cpu_sgemm(A.data(), B.data(), cpu_ref.data(), alpha, beta, M, N, K);
+
+  thrust::device_vector<float> d_c = init_c;
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async_k_slice<
+          32, 4, 4, 16>(thrust::raw_pointer_cast(d_a.data()),
+                        thrust::raw_pointer_cast(d_b.data()),
+                        thrust::raw_pointer_cast(d_c.data()), alpha, beta, M, N,
+                        K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_ref[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest,
+       SharedMemBlockingTileKernelMdspanRegBlockCpAsyncKSlice8x4K16) {
+  thrust::device_vector<float> d_c(M * K);
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async_k_slice<
+          32, 8, 4, 16>(thrust::raw_pointer_cast(d_a.data()),
+                        thrust::raw_pointer_cast(d_b.data()),
+                        thrust::raw_pointer_cast(d_c.data()), 1.0f, 0.0f, M, N,
+                        K, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+  thrust::host_vector<float> h_c(M * K);
+  thrust::copy(d_c.begin(), d_c.end(), h_c.begin());
+  for (int i = 0; i < M * K; i++) {
+    ASSERT_NEAR(h_c[i], cpu_c[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMMKernelTest,
+       SharedMemBlockingTileKernelMdspanRegBlockCpAsyncKSlice8x4K16Beta) {
+  const float alpha = 0.7f;
+  const float beta = 0.3f;
+
+  thrust::host_vector<float> init_c(M * K);
+  for (int i = 0; i < M * K; ++i) {
+    init_c[i] = rand() % 5 / 5.0f;
+  }
+
+  thrust::host_vector<float> cpu_ref = init_c;
+  cpu_sgemm(A.data(), B.data(), cpu_ref.data(), alpha, beta, M, N, K);
+
+  thrust::device_vector<float> d_c = init_c;
+  cudaError_t err =
+      launch_sgemm_shared_mem_blocking_tile_mdspan_reg_block_cp_async_k_slice<
+          32, 8, 4, 16>(thrust::raw_pointer_cast(d_a.data()),
+                        thrust::raw_pointer_cast(d_b.data()),
+                        thrust::raw_pointer_cast(d_c.data()), alpha, beta, M, N,
+                        K, nullptr);
   ASSERT_EQ(err, cudaSuccess);
 
   thrust::host_vector<float> h_c(M * K);
