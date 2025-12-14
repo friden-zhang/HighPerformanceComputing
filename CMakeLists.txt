@@ -33,6 +33,8 @@ find_package(CUDAToolkit REQUIRED)
 
 include_directories(BEFORE ${CUDAToolkit_INCLUDE_DIRS})
 
+enable_testing()
+
 if(HPC_ENABLE_CUTLASS)
   set(_cutlass_root "")
   set(_cutlass_candidates "")
@@ -87,3 +89,4 @@ endif()
 add_subdirectory(vector_add_kernel)
 add_subdirectory(sgemm_kernel)
 add_subdirectory(reduction)
+add_subdirectory(gemv)
