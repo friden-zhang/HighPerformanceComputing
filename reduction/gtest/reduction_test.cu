@@ -16,6 +16,16 @@ static void cpu_sum(float *input, float *output, int n) {
 class ReductionTest : public ::testing::Test {
 public:
   void SetUp() override {
+    int device_count = 0;
+    cudaError_t device_err = cudaGetDeviceCount(&device_count);
+    if (device_err != cudaSuccess || device_count == 0) {
+      if (device_err == cudaSuccess) {
+        GTEST_SKIP() << "No CUDA device available";
+      }
+      GTEST_SKIP() << "CUDA unavailable: " << cudaGetErrorString(device_err);
+    }
+    cudaSetDevice(0);
+
     data = thrust::host_vector<float>(2048);
     for (int i = 0; i < 2048; i++) {
       data[i] = i / 2;

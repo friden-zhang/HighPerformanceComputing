@@ -62,6 +62,16 @@ static void cpu_sgemm_col_major_b(const ElementA *A, const ElementB *B,
 class SGEMMKernelTest : public ::testing::Test {
 public:
   void SetUp() override {
+    int device_count = 0;
+    cudaError_t device_err = cudaGetDeviceCount(&device_count);
+    if (device_err != cudaSuccess || device_count == 0) {
+      if (device_err == cudaSuccess) {
+        GTEST_SKIP() << "No CUDA device available";
+      }
+      GTEST_SKIP() << "CUDA unavailable: " << cudaGetErrorString(device_err);
+    }
+    cudaSetDevice(0);
+
     A = thrust::host_vector<float>(M * N);
     B = thrust::host_vector<float>(N * K);
     // init A

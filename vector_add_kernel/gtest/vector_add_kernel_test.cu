@@ -14,6 +14,16 @@ static void cpu_vector_add(float *a, float *b, float *c, int n) {
 class VectorAddKernelTest : public ::testing::Test {
 public:
   void SetUp() override {
+    int device_count = 0;
+    cudaError_t device_err = cudaGetDeviceCount(&device_count);
+    if (device_err != cudaSuccess || device_count == 0) {
+      if (device_err == cudaSuccess) {
+        GTEST_SKIP() << "No CUDA device available";
+      }
+      GTEST_SKIP() << "CUDA unavailable: " << cudaGetErrorString(device_err);
+    }
+    cudaSetDevice(0);
+
     a = thrust::host_vector<float>(1024 * 2048);
     b = thrust::host_vector<float>(1024 * 2048);
     for (int i = 0; i < 1024 * 2048; i++) {
