@@ -22,3 +22,5 @@ cmake --build build -j
 
 - `sgemm_kernel/`: CUDA SGEMM optimizations + CUTLASS Tensor Core baselines
   (see [sgemm_kernel/README.md](sgemm_kernel/README.md))
+- `gemv/`: CUDA GEMV kernels (warp-level reduction variants + CUTLASS baseline)
+  (see [gemv/README.md](gemv/README.md))

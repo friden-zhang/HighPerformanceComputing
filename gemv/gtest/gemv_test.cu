@@ -90,3 +90,55 @@ TEST_F(SGEMVKernelTest, WarpReduceKernel) {
     ASSERT_NEAR(h_y[i], cpu_y[i], 1e-2);
   }
 }
+
+TEST_F(SGEMVKernelTest, WarpReduceXSharedKernel) {
+  thrust::device_vector<float> d_y = y_init;
+  cudaError_t err = launch_sgemv_wrap_reduce_x_shared<256>(
+      thrust::raw_pointer_cast(d_a.data()), thrust::raw_pointer_cast(d_x.data()),
+      thrust::raw_pointer_cast(d_y.data()), alpha, beta, M, N, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_y = d_y;
+  for (int i = 0; i < M; i++) {
+    ASSERT_NEAR(h_y[i], cpu_y[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMVKernelTest, WarpReduceVec4Kernel) {
+  thrust::device_vector<float> d_y = y_init;
+  cudaError_t err = launch_sgemv_wrap_reduce_vec4<256>(
+      thrust::raw_pointer_cast(d_a.data()), thrust::raw_pointer_cast(d_x.data()),
+      thrust::raw_pointer_cast(d_y.data()), alpha, beta, M, N, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_y = d_y;
+  for (int i = 0; i < M; i++) {
+    ASSERT_NEAR(h_y[i], cpu_y[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMVKernelTest, WarpGroup2WarpsKernel) {
+  thrust::device_vector<float> d_y = y_init;
+  cudaError_t err = launch_sgemv_warp_group_reduce<256, 2>(
+      thrust::raw_pointer_cast(d_a.data()), thrust::raw_pointer_cast(d_x.data()),
+      thrust::raw_pointer_cast(d_y.data()), alpha, beta, M, N, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_y = d_y;
+  for (int i = 0; i < M; i++) {
+    ASSERT_NEAR(h_y[i], cpu_y[i], 1e-2);
+  }
+}
+
+TEST_F(SGEMVKernelTest, WarpGroup4WarpsKernel) {
+  thrust::device_vector<float> d_y = y_init;
+  cudaError_t err = launch_sgemv_warp_group_reduce<256, 4>(
+      thrust::raw_pointer_cast(d_a.data()), thrust::raw_pointer_cast(d_x.data()),
+      thrust::raw_pointer_cast(d_y.data()), alpha, beta, M, N, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_y = d_y;
+  for (int i = 0; i < M; i++) {
+    ASSERT_NEAR(h_y[i], cpu_y[i], 1e-2);
+  }
+}

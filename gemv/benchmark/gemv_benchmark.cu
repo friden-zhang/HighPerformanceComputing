@@ -54,6 +54,66 @@ static void BM_SGEMVWrapReduce(benchmark::State &state) {
   }
 }
 
+template <int BLOCK_SIZE>
+static void BM_SGEMVWrapReduceXShared(benchmark::State &state) {
+  cudaSetDevice(0);
+  thrust::device_vector<float> d_a(M * N);
+  thrust::device_vector<float> d_x(N);
+  thrust::device_vector<float> d_y(M);
+
+  for (auto _ : state) {
+    auto ret = launch_sgemv_wrap_reduce_x_shared<BLOCK_SIZE>(
+        thrust::raw_pointer_cast(d_a.data()),
+        thrust::raw_pointer_cast(d_x.data()),
+        thrust::raw_pointer_cast(d_y.data()), 1.0f, 0.0f, M, N, nullptr);
+    if (ret != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(ret));
+      return;
+    }
+    benchmark::DoNotOptimize(ret);
+  }
+}
+
+template <int BLOCK_SIZE>
+static void BM_SGEMVWrapReduceVec4(benchmark::State &state) {
+  cudaSetDevice(0);
+  thrust::device_vector<float> d_a(M * N);
+  thrust::device_vector<float> d_x(N);
+  thrust::device_vector<float> d_y(M);
+
+  for (auto _ : state) {
+    auto ret = launch_sgemv_wrap_reduce_vec4<BLOCK_SIZE>(
+        thrust::raw_pointer_cast(d_a.data()),
+        thrust::raw_pointer_cast(d_x.data()),
+        thrust::raw_pointer_cast(d_y.data()), 1.0f, 0.0f, M, N, nullptr);
+    if (ret != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(ret));
+      return;
+    }
+    benchmark::DoNotOptimize(ret);
+  }
+}
+
+template <int BLOCK_SIZE, int WARPS_PER_ROW>
+static void BM_SGEMVWarpGroupReduce(benchmark::State &state) {
+  cudaSetDevice(0);
+  thrust::device_vector<float> d_a(M * N);
+  thrust::device_vector<float> d_x(N);
+  thrust::device_vector<float> d_y(M);
+
+  for (auto _ : state) {
+    auto ret = launch_sgemv_warp_group_reduce<BLOCK_SIZE, WARPS_PER_ROW>(
+        thrust::raw_pointer_cast(d_a.data()),
+        thrust::raw_pointer_cast(d_x.data()),
+        thrust::raw_pointer_cast(d_y.data()), 1.0f, 0.0f, M, N, nullptr);
+    if (ret != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(ret));
+      return;
+    }
+    benchmark::DoNotOptimize(ret);
+  }
+}
+
 BENCHMARK(BM_SGEMVNative<128>);
 BENCHMARK(BM_SGEMVNative<256>);
 BENCHMARK(BM_SGEMVNative<512>);
@@ -61,6 +121,11 @@ BENCHMARK(BM_SGEMVNative<512>);
 BENCHMARK(BM_SGEMVWrapReduce<128>);
 BENCHMARK(BM_SGEMVWrapReduce<256>);
 BENCHMARK(BM_SGEMVWrapReduce<512>);
+
+BENCHMARK(BM_SGEMVWrapReduceXShared<256>);
+BENCHMARK(BM_SGEMVWrapReduceVec4<256>);
+BENCHMARK(BM_SGEMVWarpGroupReduce<256, 2>);
+BENCHMARK(BM_SGEMVWarpGroupReduce<256, 4>);
 
 #ifdef HPC_USE_CUTLASS
 static void BM_CUTLASS_GEMV(benchmark::State &state) {
