@@ -26,3 +26,10 @@ target_link_libraries(gemv_benchmark
     benchmark::benchmark
 )
 
+if(TARGET cutlass_headers)
+  target_link_libraries(gemv_benchmark PRIVATE cutlass_headers)
+  target_compile_definitions(gemv_benchmark PRIVATE HPC_USE_CUTLASS=1)
+  target_compile_options(gemv_benchmark PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+  )
+endif()
