@@ -3,20 +3,12 @@
 #include <cuda/std/mdspan>
 #include <cuda_runtime.h>
 
-// Declaration of the conv3d_native kernel
-// Do not need support padding, stride
-// input shape: (N, C, D, H, W)
-// kernel shape: (K, C, KD, KH, KW)
-// output shape: (N, K, OD, OH, OW)
-// N : batch size
-// C : input channels
-// D, H, W : input depth, height, width
-// K : output channels
-// KD, KH, KW : kernel depth, height, width
-__global__ void conv3d_native(const float *__restrict__ input,
-                              const float *__restrict__ kernel,
-                              float *__restrict__ output, int N, int C, int D,
-                              int H, int W, int K, int KD, int KH, int KW) {
+// Conv3D baseline: mdspan indexing, thread maps to (od, oh, ow) and serializes
+// N/K.
+__global__ void conv3d_mdspan_spatial_nk_serial(
+    const float *__restrict__ input, const float *__restrict__ kernel,
+    float *__restrict__ output, int N, int C, int D, int H, int W, int K,
+    int KD, int KH, int KW) {
 
   const int OD = D - KD + 1;
   const int OH = H - KH + 1;
@@ -26,7 +18,6 @@ __global__ void conv3d_native(const float *__restrict__ input,
   const int oh = blockIdx.y * blockDim.y + threadIdx.y;
   const int od = blockIdx.z * blockDim.z + threadIdx.z;
 
-  // Check output bounds
   if (ow >= OW || oh >= OH || od >= OD)
     return;
 
@@ -44,8 +35,6 @@ __global__ void conv3d_native(const float *__restrict__ input,
   mdspan_kernel_t mdspan_kernel{kernel, ext_kernel};
   mdspan_output_t mdspan_output{output, ext_output};
 
-  // this thread processes all batches and output channels for a specific (od,
-  // oh, ow)
   for (int n = 0; n < N; ++n) {
     for (int k = 0; k < K; ++k) {
       float sum = 0.0f;
@@ -62,16 +51,13 @@ __global__ void conv3d_native(const float *__restrict__ input,
       mdspan_output(n, k, od, oh, ow) = sum;
     }
   }
-
-  return;
 }
 
 template <int BLOCK_X, int BLOCK_Y, int BLOCK_Z>
-cudaError_t launch_conv3d_native(const float *__restrict__ input,
-                                 const float *__restrict__ kernel,
-                                 float *__restrict__ output, int N, int C,
-                                 int D, int H, int W, int K, int KD, int KH,
-                                 int KW, cudaStream_t stream = nullptr) {
+cudaError_t launch_conv3d_mdspan_spatial_nk_serial(
+    const float *__restrict__ input, const float *__restrict__ kernel,
+    float *__restrict__ output, int N, int C, int D, int H, int W, int K,
+    int KD, int KH, int KW, cudaStream_t stream = nullptr) {
   const int OD = D - KD + 1;
   const int OH = H - KH + 1;
   const int OW = W - KW + 1;
@@ -85,11 +71,11 @@ cudaError_t launch_conv3d_native(const float *__restrict__ input,
             (OD + BLOCK_Z - 1) / BLOCK_Z);
 
   if (stream) {
-    conv3d_native<<<grid, block, 0, stream>>>(input, kernel, output, N, C, D, H,
-                                              W, K, KD, KH, KW);
+    conv3d_mdspan_spatial_nk_serial<<<grid, block, 0, stream>>>(
+        input, kernel, output, N, C, D, H, W, K, KD, KH, KW);
   } else {
-    conv3d_native<<<grid, block>>>(input, kernel, output, N, C, D, H, W, K, KD,
-                                   KH, KW);
+    conv3d_mdspan_spatial_nk_serial<<<grid, block>>>(
+        input, kernel, output, N, C, D, H, W, K, KD, KH, KW);
     cudaDeviceSynchronize();
   }
 
