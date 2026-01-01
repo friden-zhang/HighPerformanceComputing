@@ -4,7 +4,12 @@
 #include <cstdio>
 #include <string>
 
+#include "kernel/mdspan_const_kernel_linear_nk_parallel.cuh"
 #include "kernel/mdspan_linear_nk_parallel.cuh"
+#include "kernel/mdspan_shared_input_kernel_kblock_nk_od.cuh"
+#include "kernel/mdspan_shared_input_tile_kblock_nk_od.cuh"
+#include "kernel/mdspan_shared_input_tile_kparallel_nk_od.cuh"
+#include "kernel/mdspan_shared_input_tile_nk_od.cuh"
 #include "kernel/mdspan_spatial_nk_serial.cuh"
 
 struct Conv3DShape {
@@ -97,6 +102,208 @@ static void BM_Conv3DMdspanLinearNKParallel(benchmark::State &state,
   }
 }
 
+template <int BLOCK_X, int BLOCK_Y>
+static void BM_Conv3DMdspanSharedInputTileNKOD(benchmark::State &state,
+                                               const Conv3DShape &shape) {
+  cudaSetDevice(0);
+
+  const int OD = shape.D - shape.KD + 1;
+  const int OH = shape.H - shape.KH + 1;
+  const int OW = shape.W - shape.KW + 1;
+
+  if (OD <= 0 || OH <= 0 || OW <= 0) {
+    state.SkipWithError("invalid output size");
+    return;
+  }
+
+  thrust::device_vector<float> d_input(static_cast<size_t>(shape.N) * shape.C *
+                                       shape.D * shape.H * shape.W);
+  thrust::device_vector<float> d_kernel(static_cast<size_t>(shape.K) * shape.C *
+                                        shape.KD * shape.KH * shape.KW);
+  thrust::device_vector<float> d_output(static_cast<size_t>(shape.N) * shape.K *
+                                        OD * OH * OW);
+
+  for (auto _ : state) {
+    auto ret = launch_conv3d_mdspan_shared_input_tile_nk_od<BLOCK_X, BLOCK_Y>(
+        thrust::raw_pointer_cast(d_input.data()),
+        thrust::raw_pointer_cast(d_kernel.data()),
+        thrust::raw_pointer_cast(d_output.data()), shape.N, shape.C, shape.D,
+        shape.H, shape.W, shape.K, shape.KD, shape.KH, shape.KW, nullptr);
+    if (ret != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(ret));
+      return;
+    }
+    benchmark::DoNotOptimize(ret);
+  }
+}
+
+template <int BLOCK_X, int BLOCK_Y, int K_TILE>
+static void BM_Conv3DMdspanSharedInputTileKBlockNKOD(
+    benchmark::State &state, const Conv3DShape &shape) {
+  cudaSetDevice(0);
+
+  const int OD = shape.D - shape.KD + 1;
+  const int OH = shape.H - shape.KH + 1;
+  const int OW = shape.W - shape.KW + 1;
+
+  if (OD <= 0 || OH <= 0 || OW <= 0) {
+    state.SkipWithError("invalid output size");
+    return;
+  }
+
+  thrust::device_vector<float> d_input(static_cast<size_t>(shape.N) * shape.C *
+                                       shape.D * shape.H * shape.W);
+  thrust::device_vector<float> d_kernel(static_cast<size_t>(shape.K) * shape.C *
+                                        shape.KD * shape.KH * shape.KW);
+  thrust::device_vector<float> d_output(static_cast<size_t>(shape.N) * shape.K *
+                                        OD * OH * OW);
+
+  for (auto _ : state) {
+    auto ret = launch_conv3d_mdspan_shared_input_tile_kblock_nk_od<BLOCK_X,
+                                                                   BLOCK_Y,
+                                                                   K_TILE>(
+        thrust::raw_pointer_cast(d_input.data()),
+        thrust::raw_pointer_cast(d_kernel.data()),
+        thrust::raw_pointer_cast(d_output.data()), shape.N, shape.C, shape.D,
+        shape.H, shape.W, shape.K, shape.KD, shape.KH, shape.KW, nullptr);
+    if (ret != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(ret));
+      return;
+    }
+    benchmark::DoNotOptimize(ret);
+  }
+}
+
+template <int BLOCK_X, int BLOCK_Y, int K_TILE>
+static void BM_Conv3DMdspanSharedInputTileKParallelNKOD(
+    benchmark::State &state, const Conv3DShape &shape) {
+  cudaSetDevice(0);
+
+  const int OD = shape.D - shape.KD + 1;
+  const int OH = shape.H - shape.KH + 1;
+  const int OW = shape.W - shape.KW + 1;
+
+  if (OD <= 0 || OH <= 0 || OW <= 0) {
+    state.SkipWithError("invalid output size");
+    return;
+  }
+
+  thrust::device_vector<float> d_input(static_cast<size_t>(shape.N) * shape.C *
+                                       shape.D * shape.H * shape.W);
+  thrust::device_vector<float> d_kernel(static_cast<size_t>(shape.K) * shape.C *
+                                        shape.KD * shape.KH * shape.KW);
+  thrust::device_vector<float> d_output(static_cast<size_t>(shape.N) * shape.K *
+                                        OD * OH * OW);
+
+  for (auto _ : state) {
+    auto ret = launch_conv3d_mdspan_shared_input_tile_kparallel_nk_od<BLOCK_X,
+                                                                      BLOCK_Y,
+                                                                      K_TILE>(
+        thrust::raw_pointer_cast(d_input.data()),
+        thrust::raw_pointer_cast(d_kernel.data()),
+        thrust::raw_pointer_cast(d_output.data()), shape.N, shape.C, shape.D,
+        shape.H, shape.W, shape.K, shape.KD, shape.KH, shape.KW, nullptr);
+    if (ret != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(ret));
+      return;
+    }
+    benchmark::DoNotOptimize(ret);
+  }
+}
+
+template <int BLOCK_X, int BLOCK_Y, int K_TILE>
+static void BM_Conv3DMdspanSharedInputKernelKBlockNKOD(
+    benchmark::State &state, const Conv3DShape &shape) {
+  cudaSetDevice(0);
+
+  const int OD = shape.D - shape.KD + 1;
+  const int OH = shape.H - shape.KH + 1;
+  const int OW = shape.W - shape.KW + 1;
+
+  if (OD <= 0 || OH <= 0 || OW <= 0) {
+    state.SkipWithError("invalid output size");
+    return;
+  }
+
+  thrust::device_vector<float> d_input(static_cast<size_t>(shape.N) * shape.C *
+                                       shape.D * shape.H * shape.W);
+  thrust::device_vector<float> d_kernel(static_cast<size_t>(shape.K) * shape.C *
+                                        shape.KD * shape.KH * shape.KW);
+  thrust::device_vector<float> d_output(static_cast<size_t>(shape.N) * shape.K *
+                                        OD * OH * OW);
+
+  for (auto _ : state) {
+    auto ret = launch_conv3d_mdspan_shared_input_kernel_kblock_nk_od<BLOCK_X,
+                                                                     BLOCK_Y,
+                                                                     K_TILE>(
+        thrust::raw_pointer_cast(d_input.data()),
+        thrust::raw_pointer_cast(d_kernel.data()),
+        thrust::raw_pointer_cast(d_output.data()), shape.N, shape.C, shape.D,
+        shape.H, shape.W, shape.K, shape.KD, shape.KH, shape.KW, nullptr);
+    if (ret != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(ret));
+      return;
+    }
+    benchmark::DoNotOptimize(ret);
+  }
+}
+
+template <int BLOCK_SIZE>
+static void BM_Conv3DMdspanConstKernelLinearNKParallel(
+    benchmark::State &state, const Conv3DShape &shape) {
+  cudaSetDevice(0);
+
+  const int OD = shape.D - shape.KD + 1;
+  const int OH = shape.H - shape.KH + 1;
+  const int OW = shape.W - shape.KW + 1;
+
+  if (OD <= 0 || OH <= 0 || OW <= 0) {
+    state.SkipWithError("invalid output size");
+    return;
+  }
+
+  const size_t kernel_elems =
+      static_cast<size_t>(shape.K) * shape.C * shape.KD * shape.KH * shape.KW;
+
+  thrust::device_vector<float> d_input(static_cast<size_t>(shape.N) * shape.C *
+                                       shape.D * shape.H * shape.W);
+  thrust::device_vector<float> d_kernel(kernel_elems);
+  thrust::device_vector<float> d_output(static_cast<size_t>(shape.N) * shape.K *
+                                        OD * OH * OW);
+
+  if (kernel_elems <= static_cast<size_t>(kConv3dConstKernelMaxFloats)) {
+    auto prep = prepare_conv3d_const_kernel(
+        thrust::raw_pointer_cast(d_kernel.data()), kernel_elems, nullptr);
+    if (prep != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(prep));
+      return;
+    }
+  }
+
+  for (auto _ : state) {
+    cudaError_t ret = cudaSuccess;
+    if (kernel_elems <= static_cast<size_t>(kConv3dConstKernelMaxFloats)) {
+      ret = launch_conv3d_mdspan_const_kernel_linear_nk_parallel_prepared<
+          BLOCK_SIZE>(thrust::raw_pointer_cast(d_input.data()),
+                      thrust::raw_pointer_cast(d_kernel.data()),
+                      thrust::raw_pointer_cast(d_output.data()), shape.N,
+                      shape.C, shape.D, shape.H, shape.W, shape.K, shape.KD,
+                      shape.KH, shape.KW, nullptr);
+    } else {
+      ret = launch_conv3d_mdspan_linear_nk_parallel<BLOCK_SIZE>(
+          thrust::raw_pointer_cast(d_input.data()),
+          thrust::raw_pointer_cast(d_kernel.data()),
+          thrust::raw_pointer_cast(d_output.data()), shape.N, shape.C, shape.D,
+          shape.H, shape.W, shape.K, shape.KD, shape.KH, shape.KW, nullptr);
+    }
+    if (ret != cudaSuccess) {
+      state.SkipWithError(cudaGetErrorString(ret));
+      return;
+    }
+    benchmark::DoNotOptimize(ret);
+  }
+}
+
 static void RegisterConv3DBenchmarks() {
   const Conv3DShape shapes[] = {
       {1, 3, 16, 64, 64, 8, 3, 3, 3},
@@ -137,6 +344,96 @@ static void RegisterConv3DBenchmarks() {
         (prefix + "/MdspanLinearNKParallel_B512").c_str(),
         [=](benchmark::State &state) {
           BM_Conv3DMdspanLinearNKParallel<512>(state, shape);
+        });
+
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputTileNKOD_B8x8").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputTileNKOD<8, 8>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputTileNKOD_B16x16").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputTileNKOD<16, 16>(state, shape);
+        });
+
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputTileKBlockNKOD_B8x8_K2").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputTileKBlockNKOD<8, 8, 2>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputTileKBlockNKOD_B8x8_K4").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputTileKBlockNKOD<8, 8, 4>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputTileKBlockNKOD_B16x16_K2").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputTileKBlockNKOD<16, 16, 2>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputTileKBlockNKOD_B16x16_K4").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputTileKBlockNKOD<16, 16, 4>(state, shape);
+        });
+
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputTileKParallelNKOD_B8x8_K2").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputTileKParallelNKOD<8, 8, 2>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputTileKParallelNKOD_B8x8_K4").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputTileKParallelNKOD<8, 8, 4>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputTileKParallelNKOD_B16x16_K2").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputTileKParallelNKOD<16, 16, 2>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputTileKParallelNKOD_B16x16_K4").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputTileKParallelNKOD<16, 16, 4>(state, shape);
+        });
+
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputKernelKBlockNKOD_B8x8_K2").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputKernelKBlockNKOD<8, 8, 2>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputKernelKBlockNKOD_B8x8_K4").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputKernelKBlockNKOD<8, 8, 4>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputKernelKBlockNKOD_B16x16_K2").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputKernelKBlockNKOD<16, 16, 2>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanSharedInputKernelKBlockNKOD_B16x16_K4").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanSharedInputKernelKBlockNKOD<16, 16, 4>(state, shape);
+        });
+
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanConstKernelLinearNKParallel_B128").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanConstKernelLinearNKParallel<128>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanConstKernelLinearNKParallel_B256").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanConstKernelLinearNKParallel<256>(state, shape);
+        });
+    benchmark::RegisterBenchmark(
+        (prefix + "/MdspanConstKernelLinearNKParallel_B512").c_str(),
+        [=](benchmark::State &state) {
+          BM_Conv3DMdspanConstKernelLinearNKParallel<512>(state, shape);
         });
   }
 }
