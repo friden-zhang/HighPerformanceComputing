@@ -1,6 +1,11 @@
 #include <gtest/gtest.h>
 
+#include "kernel/mdspan_const_kernel_linear_nk_parallel.cuh"
 #include "kernel/mdspan_linear_nk_parallel.cuh"
+#include "kernel/mdspan_shared_input_kernel_kblock_nk_od.cuh"
+#include "kernel/mdspan_shared_input_tile_kblock_nk_od.cuh"
+#include "kernel/mdspan_shared_input_tile_kparallel_nk_od.cuh"
+#include "kernel/mdspan_shared_input_tile_nk_od.cuh"
 #include "kernel/mdspan_spatial_nk_serial.cuh"
 
 #include <thrust/device_vector.h>
@@ -120,6 +125,83 @@ TEST_F(Conv3DTest, MdspanSpatialNKSerial) {
 TEST_F(Conv3DTest, MdspanLinearNKParallel) {
   thrust::device_vector<float> d_output(N * K * OD * OH * OW);
   cudaError_t err = launch_conv3d_mdspan_linear_nk_parallel<256>(
+      thrust::raw_pointer_cast(d_input.data()),
+      thrust::raw_pointer_cast(d_kernel.data()),
+      thrust::raw_pointer_cast(d_output.data()), N, C, D, H, W, K, KD, KH, KW,
+      nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_output = d_output;
+  for (size_t i = 0; i < h_output.size(); ++i) {
+    ASSERT_NEAR(h_output[i], output_ref[i], 1e-2);
+  }
+}
+
+TEST_F(Conv3DTest, MdspanSharedInputTileNKOD) {
+  thrust::device_vector<float> d_output(N * K * OD * OH * OW);
+  cudaError_t err = launch_conv3d_mdspan_shared_input_tile_nk_od<8, 8>(
+      thrust::raw_pointer_cast(d_input.data()),
+      thrust::raw_pointer_cast(d_kernel.data()),
+      thrust::raw_pointer_cast(d_output.data()), N, C, D, H, W, K, KD, KH, KW,
+      nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_output = d_output;
+  for (size_t i = 0; i < h_output.size(); ++i) {
+    ASSERT_NEAR(h_output[i], output_ref[i], 1e-2);
+  }
+}
+
+TEST_F(Conv3DTest, MdspanSharedInputTileKBlockNKOD) {
+  thrust::device_vector<float> d_output(N * K * OD * OH * OW);
+  cudaError_t err = launch_conv3d_mdspan_shared_input_tile_kblock_nk_od<8, 8, 2>(
+      thrust::raw_pointer_cast(d_input.data()),
+      thrust::raw_pointer_cast(d_kernel.data()),
+      thrust::raw_pointer_cast(d_output.data()), N, C, D, H, W, K, KD, KH, KW,
+      nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_output = d_output;
+  for (size_t i = 0; i < h_output.size(); ++i) {
+    ASSERT_NEAR(h_output[i], output_ref[i], 1e-2);
+  }
+}
+
+TEST_F(Conv3DTest, MdspanSharedInputTileKParallelNKOD) {
+  thrust::device_vector<float> d_output(N * K * OD * OH * OW);
+  cudaError_t err =
+      launch_conv3d_mdspan_shared_input_tile_kparallel_nk_od<8, 8, 2>(
+          thrust::raw_pointer_cast(d_input.data()),
+          thrust::raw_pointer_cast(d_kernel.data()),
+          thrust::raw_pointer_cast(d_output.data()), N, C, D, H, W, K, KD, KH,
+          KW, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_output = d_output;
+  for (size_t i = 0; i < h_output.size(); ++i) {
+    ASSERT_NEAR(h_output[i], output_ref[i], 1e-2);
+  }
+}
+
+TEST_F(Conv3DTest, MdspanSharedInputKernelKBlockNKOD) {
+  thrust::device_vector<float> d_output(N * K * OD * OH * OW);
+  cudaError_t err =
+      launch_conv3d_mdspan_shared_input_kernel_kblock_nk_od<8, 8, 2>(
+          thrust::raw_pointer_cast(d_input.data()),
+          thrust::raw_pointer_cast(d_kernel.data()),
+          thrust::raw_pointer_cast(d_output.data()), N, C, D, H, W, K, KD, KH,
+          KW, nullptr);
+  ASSERT_EQ(err, cudaSuccess);
+
+  thrust::host_vector<float> h_output = d_output;
+  for (size_t i = 0; i < h_output.size(); ++i) {
+    ASSERT_NEAR(h_output[i], output_ref[i], 1e-2);
+  }
+}
+
+TEST_F(Conv3DTest, MdspanConstKernelLinearNKParallel) {
+  thrust::device_vector<float> d_output(N * K * OD * OH * OW);
+  cudaError_t err = launch_conv3d_mdspan_const_kernel_linear_nk_parallel<256>(
       thrust::raw_pointer_cast(d_input.data()),
       thrust::raw_pointer_cast(d_kernel.data()),
       thrust::raw_pointer_cast(d_output.data()), N, C, D, H, W, K, KD, KH, KW,
